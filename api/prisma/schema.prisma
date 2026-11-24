@@ -1,0 +1,141 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  owner
+  editor
+  viewer
+}
+
+enum LinkType {
+  front
+  back
+  repo
+  db
+  other
+}
+
+enum Category {
+  personal
+  trabajo
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  name         String
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  ownedProjects  Project[]       @relation("ProjectOwner")
+  memberships    ProjectMember[]
+  notes          Note[]
+  assignedTasks  Task[]          @relation("TaskAssignee")
+  createdTasks   Task[]          @relation("TaskCreator")
+  createdInvites InviteLink[]    @relation("InviteCreator")
+
+  @@map("users")
+}
+
+model Project {
+  id          String   @id @default(uuid())
+  ownerId     String   @map("owner_id")
+  name        String
+  subtitle    String?
+  description String?
+  category    Category @default(personal)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  owner   User            @relation("ProjectOwner", fields: [ownerId], references: [id])
+  members ProjectMember[]
+  links   ProjectLink[]
+  notes   Note[]
+  tasks   Task[]
+  invites InviteLink[]
+
+  @@map("projects")
+}
+
+model ProjectMember {
+  projectId String @map("project_id")
+  userId    String @map("user_id")
+  role      Role   @default(viewer)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, userId])
+  @@map("project_members")
+}
+
+model ProjectLink {
+  id           String   @id @default(uuid())
+  projectId    String   @map("project_id")
+  type         LinkType @default(other)
+  label        String
+  urlEncrypted String   @map("url_encrypted")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("project_links")
+}
+
+model Note {
+  id               String   @id @default(uuid())
+  projectId        String   @map("project_id")
+  authorId         String   @map("author_id")
+  contentEncrypted String   @map("content_encrypted")
+  isPublic         Boolean  @default(false) @map("is_public")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  author  User    @relation(fields: [authorId], references: [id])
+
+  @@index([projectId])
+  @@map("notes")
+}
+
+model Task {
+  id          String   @id @default(uuid())
+  projectId   String   @map("project_id")
+  title       String
+  description String?
+  done        Boolean  @default(false)
+  assigneeId  String?  @map("assignee_id")
+  createdBy   String   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  project  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee User?   @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  creator  User    @relation("TaskCreator", fields: [createdBy], references: [id])
+
+  @@index([projectId, assigneeId])
+  @@map("tasks")
+}
+
+model InviteLink {
+  id        String    @id @default(uuid())
+  projectId String    @map("project_id")
+  tokenHash String    @unique @map("token_hash")
+  role      Role
+  expiresAt DateTime  @map("expires_at")
+  maxUses   Int       @map("max_uses")
+  uses      Int       @default(0)
+  createdBy String    @map("created_by")
+  createdAt DateTime  @default(now()) @map("created_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  creator User    @relation("InviteCreator", fields: [createdBy], references: [id])
+
+  @@index([projectId])
+  @@map("invite_links")
+}
